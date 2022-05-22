@@ -1,0 +1,23 @@
+# Compiled binaries
+http-server
+mdb-lookup-server
+http-client
+mdb-add
+mdb-lookup
+
+# Debug artifacts
+*.dSYM/
+*.dSYM/**
+*.d
+
+# Data files
+data/mydb
+
+# Editor files
+.vscode/
+.idea/
+*.yml
+
+# OS artifacts
+.DS_Store
+__MACOSX/
