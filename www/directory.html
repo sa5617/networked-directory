@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Directory &mdash; Networked Directory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #d8d3c4; }
+  body {
+    font-family: 'Special Elite', 'Courier New', Courier, monospace;
+    color: #1f1b14;
+    font-size: 16px;
+    line-height: 1.7;
+    padding: 56px 24px 96px;
+    box-sizing: border-box;
+    min-height: 100vh;
+  }
+  .page {
+    width: 100%;
+    max-width: 820px;
+    margin: 0 auto;
+    background: #f5efdd;
+    background-image:
+      radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px),
+      radial-gradient(rgba(0,0,0,.02)  1px, transparent 1px),
+      linear-gradient(180deg, #f7f1df 0%, #ede4ca 100%);
+    background-size: 3px 3px, 7px 7px, 100% 100%;
+    background-position: 0 0, 1px 2px, 0 0;
+    padding: 72px 84px 88px;
+    box-shadow:
+      0 1px 0 rgba(0,0,0,.06),
+      0 14px 30px -10px rgba(0,0,0,.35),
+      0 30px 60px -20px rgba(0,0,0,.28);
+    position: relative;
+    box-sizing: border-box;
+  }
+  .slug {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: #46402f;
+    border-bottom: 1px dashed #8a7e5c;
+    padding-bottom: 8px;
+    margin-bottom: 28px;
+  }
+  .slug .left { text-transform: uppercase; }
+  .slug a { color: #46402f; text-decoration: none; border-bottom: 1px solid #8a7e5c; padding-bottom: 1px; }
+  .slug a:hover { color: #1f1b14; border-color: #1f1b14; }
+  .title {
+    text-align: center;
+    font-size: 26px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin: 12px 0 6px;
+  }
+  .sub {
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #5a4f36;
+    margin-bottom: 36px;
+  }
+
+  /* search */
+  .search-wrap { margin-bottom: 6px; }
+  .search {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-bottom: 1.5px solid #1f1b14;
+    padding: 4px 2px 10px;
+  }
+  .search .prompt {
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #5a4f36;
+    flex: 0 0 auto;
+  }
+  .search input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    font: inherit;
+    color: #1f1b14;
+    font-size: 18px;
+    letter-spacing: 1px;
+    padding: 0;
+    text-shadow: .3px .2px 0 rgba(0,0,0,.22);
+  }
+  .search input::placeholder { color: #8a7e5c; }
+
+  /* results / entries */
+  .stat {
+    margin: 22px 0 10px;
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #5a4f36;
+    border-bottom: 1px dashed #8a7e5c;
+    padding-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .entries {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .entries li {
+    padding: 14px 0;
+    border-bottom: 1px dotted #8a7e5c;
+    display: grid;
+    grid-template-columns: 180px 1fr auto;
+    gap: 0 16px;
+    align-items: baseline;
+  }
+  .entries li:last-child { border-bottom: 0; }
+  .entries .ename { font-size: 16px; letter-spacing: 1px; color: #5a4f36; }
+  .entries .emsg  { font-size: 16px; }
+  .entries .eact  { display: flex; gap: 10px; }
+  .entries li.empty {
+    display: block;
+    padding: 36px 0;
+    text-align: center;
+    color: #5a4f36;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-size: 13px;
+  }
+
+  /* section dividers */
+  .section {
+    margin-top: 44px;
+    padding-top: 22px;
+    border-top: 1px dashed #8a7e5c;
+  }
+  .section-title {
+    font-size: 12px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #5a4f36;
+    margin-bottom: 18px;
+  }
+
+  /* forms */
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+  .field label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #5a4f36;
+  }
+  .field input, .field textarea {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid #8a7e5c;
+    outline: 0;
+    font: inherit;
+    font-size: 16px;
+    color: #1f1b14;
+    padding: 4px 2px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .field input:focus, .field textarea:focus { border-bottom-color: #1f1b14; }
+  .field textarea { resize: vertical; min-height: 52px; }
+  .form-row { display: flex; gap: 24px; }
+  .form-row .field { flex: 1; }
+
+  /* buttons */
+  button, .btn {
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px dashed #8a7e5c;
+    color: #46402f;
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+  button:hover, .btn:hover { color: #1f1b14; border-color: #1f1b14; }
+  button.primary {
+    border-style: solid;
+    border-color: #1f1b14;
+    color: #1f1b14;
+  }
+  button.danger { color: #7a2020; border-color: #7a2020; }
+  button.danger:hover { color: #5a1010; border-color: #5a1010; }
+  button.small { font-size: 11px; padding: 3px 10px; }
+
+  /* inline edit row */
+  .edit-row {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 8px 0;
+  }
+  .edit-row input {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid #8a7e5c;
+    outline: 0;
+    font: inherit;
+    font-size: 15px;
+    color: #1f1b14;
+    padding: 2px 2px;
+  }
+  .edit-row input:first-child { width: 160px; }
+  .edit-row input:nth-child(2) { flex: 1; min-width: 140px; }
+
+  /* error / status messages */
+  .msg {
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 10px;
+    min-height: 1.4em;
+  }
+  .msg.err  { color: #7a2020; }
+  .msg.ok   { color: #2a5a2a; }
+
+  /* sign-in button in slug bar */
+  .slug-signin {
+    border: 1px dashed #8a7e5c;
+    padding: 5px 14px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 1px dashed #8a7e5c !important;
+    line-height: 1;
+    display: inline-block;
+  }
+  .slug-signin:hover { border-color: #1f1b14 !important; color: #1f1b14; }
+  .msg.loading { color: #5a4f36; }
+
+  /* pulse on disabled buttons to show in-flight work */
+  button:disabled {
+    animation: btn-pulse 1s ease-in-out infinite;
+    cursor: default;
+  }
+  @keyframes btn-pulse {
+    0%, 100% { opacity: 0.45; }
+    50%       { opacity: 1; }
+  }
+
+  /* auth modal */
+  #auth-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #auth-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(31, 27, 20, 0.5);
+  }
+  #auth-box {
+    position: relative;
+    z-index: 1;
+    background: #f5efdd;
+    background-image:
+      radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px),
+      radial-gradient(rgba(0,0,0,.02)  1px, transparent 1px),
+      linear-gradient(180deg, #f7f1df 0%, #ede4ca 100%);
+    background-size: 3px 3px, 7px 7px, 100% 100%;
+    background-position: 0 0, 1px 2px, 0 0;
+    padding: 44px 48px 36px;
+    width: 360px;
+    box-sizing: border-box;
+    box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 14px 30px -10px rgba(0,0,0,.35),
+                0 30px 60px -20px rgba(0,0,0,.28);
+  }
+  #auth-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: transparent;
+    border: none;
+    font: inherit;
+    font-size: 16px;
+    color: #8a7e5c;
+    cursor: pointer;
+    padding: 4px 8px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  #auth-close:hover { color: #1f1b14; }
+  .auth-tabs {
+    display: flex;
+    margin-bottom: 28px;
+    border-bottom: 1px dashed #8a7e5c;
+  }
+  .auth-tabs button {
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 16px 8px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #8a7e5c;
+    background: transparent;
+    cursor: pointer;
+    margin-bottom: -1px;
+  }
+  .auth-tabs button.active { color: #1f1b14; border-bottom-color: #1f1b14; }
+
+  /* footer */
+  .foot {
+    margin-top: 44px;
+    padding-top: 18px;
+    border-top: 1px dashed #8a7e5c;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    color: #4a4128;
+    letter-spacing: 1px;
+  }
+  .foot a {
+    color: #1f1b14;
+    text-decoration: none;
+    border-bottom: 1.5px solid #1f1b14;
+    padding-bottom: 1px;
+  }
+  .foot a::before { content: "\2196 "; }
+  mark { background: #c8a44a; color: #1f1b14; padding: 0 2px; border-radius: 1px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="slug">
+    <span class="left">net.dir / directory</span>
+    <span id="slug-right"><a href="/">return to index</a>
+      &nbsp;&middot;&nbsp; <a href="#" class="slug-signin" onclick="openAuthModal('register'); return false;">sign in</a></span>
+  </div>
+
+  <div class="title">The Directory</div>
+  <div class="sub">register &middot; search &middot; post</div>
+
+  <!-- SEARCH -->
+  <div class="search-wrap">
+    <form id="search-form">
+      <div class="search">
+        <span class="prompt">find&nbsp;:</span>
+        <input id="search-input" type="text" placeholder="a name or a message&#x2026;"
+               autocomplete="off" />
+      </div>
+    </form>
+  </div>
+  <div id="search-results"></div>
+
+  <!-- ADD ENTRY FORM -->
+  <div class="section" id="add-section" style="display:none;">
+    <div class="section-title">add entry</div>
+    <div class="field">
+      <label>name</label>
+      <input id="add-name" type="text" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label>message</label>
+      <input id="add-message" type="text" autocomplete="off" />
+    </div>
+    <button class="primary" onclick="handleAddEntry()">Add</button>
+    <div id="add-msg" class="msg"></div>
+  </div>
+
+  <!-- MY ENTRIES -->
+  <div class="section" id="my-section" style="display:none;">
+    <div class="section-title">your posts</div>
+    <ul class="entries" id="my-entries-list"></ul>
+  </div>
+
+  <div class="foot">
+    <span><a href="/">back to the index</a></span>
+  </div>
+</div>
+
+<div id="auth-modal" style="display:none;">
+  <div id="auth-backdrop" onclick="closeAuthModal()"></div>
+  <div id="auth-box">
+    <button id="auth-close" onclick="closeAuthModal()">&#10005;</button>
+    <div class="auth-tabs">
+      <button id="tab-btn-login" class="active" onclick="showTab('login')">log in</button>
+      <button id="tab-btn-register" onclick="showTab('register')">register</button>
+    </div>
+    <div id="pane-login">
+      <div class="field">
+        <label>username</label>
+        <input id="login-username" type="text" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>password</label>
+        <input id="login-password" type="password" autocomplete="current-password" />
+      </div>
+      <button id="login-btn" class="primary" onclick="handleLogin()">Log in</button>
+      <div id="login-msg" class="msg"></div>
+    </div>
+    <div id="pane-register" style="display:none;">
+      <div class="field">
+        <label>username</label>
+        <input id="reg-username" type="text" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>password</label>
+        <input id="reg-password" type="password" autocomplete="new-password" />
+      </div>
+      <button id="reg-btn" class="primary" onclick="handleRegister()">Register</button>
+      <div id="reg-msg" class="msg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // in-memory only; XSS cannot steal a token that persists across sessions
+  let token = null;
+  let currentUser = null;
+
+  // reading the payload client-side avoids a round-trip to identify the session
+  function parseJwt(t) {
+    const b64 = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(b64));
+  }
+
+  function authHeaders() {
+    return { Authorization: 'Bearer ' + token };
+  }
+
+  async function handleRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const msg = document.getElementById('reg-msg');
+    const btn = document.getElementById('reg-btn');
+    msg.className = 'msg'; msg.textContent = '';
+    if (!username || !password) { showMsg(msg, 'err', 'fill in both fields'); return; }
+    btn.disabled = true;
+    showMsg(msg, 'loading', 'creating your account...');
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (res.status === 201) {
+        const loginRes = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        if (loginRes.ok) {
+          const data = await loginRes.json();
+          token = data.access_token;
+          const payload = parseJwt(token);
+          currentUser = { user_id: parseInt(payload.sub), username: payload.username };
+          setLoggedIn();
+        } else {
+          showTab('login');
+          showMsg(document.getElementById('login-msg'), 'ok', 'registered — log in now');
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showMsg(msg, 'err', data.detail || 'registration failed');
+      }
+    } catch (e) {
+      showMsg(msg, 'err', 'something went wrong');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Register';
+    }
+  }
+
+  async function handleLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const msg = document.getElementById('login-msg');
+    const btn = document.getElementById('login-btn');
+    msg.className = 'msg'; msg.textContent = '';
+    if (!username || !password) { showMsg(msg, 'err', 'fill in both fields'); return; }
+    btn.disabled = true; btn.textContent = 'signing in...';
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        token = data.access_token;
+        const payload = parseJwt(token);
+        currentUser = { user_id: parseInt(payload.sub), username: payload.username };
+        setLoggedIn();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showMsg(msg, 'err', data.detail || 'login failed');
+      }
+    } catch (e) {
+      showMsg(msg, 'err', 'something went wrong');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Log in';
+    }
+  }
+
+  function logout() {
+    token = null;
+    currentUser = null;
+    setLoggedOut();
+  }
+
+  function openAuthModal(tab) {
+    document.getElementById('auth-modal').style.display = 'flex';
+    showTab(tab || 'login');
+  }
+
+  function closeAuthModal() {
+    document.getElementById('auth-modal').style.display = 'none';
+  }
+
+  function showTab(name) {
+    document.getElementById('pane-login').style.display    = name === 'login'    ? '' : 'none';
+    document.getElementById('pane-register').style.display = name === 'register' ? '' : 'none';
+    document.getElementById('tab-btn-login').classList.toggle('active',    name === 'login');
+    document.getElementById('tab-btn-register').classList.toggle('active', name === 'register');
+  }
+
+  function setLoggedIn() {
+    closeAuthModal();
+    document.getElementById('slug-right').innerHTML =
+      '<a href="/">return to index</a>' +
+      ' &nbsp;&middot;&nbsp; signed in as ' + currentUser.username +
+      ' &nbsp;&middot;&nbsp; <a href="#" onclick="logout(); return false;">log out</a>';
+    document.getElementById('add-section').style.display = '';
+    document.getElementById('my-section').style.display = '';
+    loadMyEntries();
+  }
+
+  function setLoggedOut() {
+    token = null; currentUser = null;
+    document.getElementById('slug-right').innerHTML =
+      '<a href="/">return to index</a>' +
+      ' &nbsp;&middot;&nbsp; <a href="#" class="slug-signin" onclick="openAuthModal(\'register\'); return false;">sign in</a>';
+    document.getElementById('add-section').style.display = 'none';
+    document.getElementById('my-section').style.display = 'none';
+    document.getElementById('my-entries-list').innerHTML = '';
+    document.getElementById('login-username').value = '';
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-msg').textContent = '';
+    document.getElementById('reg-username').value = '';
+    document.getElementById('reg-password').value = '';
+    document.getElementById('reg-msg').textContent = '';
+    const rb = document.getElementById('reg-btn');
+    rb.disabled = false; rb.textContent = 'Register';
+    const lb = document.getElementById('login-btn');
+    lb.disabled = false; lb.textContent = 'Log in';
+  }
+
+  document.getElementById('search-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const q = document.getElementById('search-input').value.trim();
+    searchEntries(q);
+  });
+
+  async function searchEntries(query) {
+    const url = query ? `/api/entries?search=${encodeURIComponent(query)}` : '/api/entries';
+    const res = await fetch(url);
+    if (!res.ok) {
+      const container = document.getElementById('search-results');
+      container.innerHTML = '';
+      const d = document.createElement('div');
+      d.className = 'msg err';
+      d.textContent = 'search failed';
+      container.appendChild(d);
+      return;
+    }
+    const entries = await res.json();
+    const container = document.getElementById('search-results');
+    container.innerHTML = '';
+
+    const stat = document.createElement('div');
+    stat.className = 'stat';
+    stat.textContent = entries.length + (entries.length === 1 ? ' result' : ' results');
+    container.appendChild(stat);
+
+    const ul = document.createElement('ul');
+    ul.className = 'entries';
+    renderEntries(entries, ul, false, undefined, query);
+    container.appendChild(ul);
+  }
+
+  function highlightText(text, query) {
+    const span = document.createElement('span');
+    if (!query) { span.textContent = text; return span; }
+    const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    let last = 0, match;
+    while ((match = re.exec(text)) !== null) {
+      if (match.index > last)
+        span.appendChild(document.createTextNode(text.slice(last, match.index)));
+      const mark = document.createElement('mark');
+      mark.textContent = match[0];
+      span.appendChild(mark);
+      last = match.index + match[0].length;
+    }
+    if (last < text.length)
+      span.appendChild(document.createTextNode(text.slice(last)));
+    return span;
+  }
+
+  function renderEntries(entries, ul, showControls, emptyText, query) {
+    ul.innerHTML = '';
+    if (entries.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = emptyText || 'nothing found.';
+      ul.appendChild(li);
+      return;
+    }
+    entries.forEach(e => {
+      const li = document.createElement('li');
+      li.dataset.id = e.id;
+
+      const name = document.createElement('span');
+      name.className = 'ename';
+      name.appendChild(highlightText(e.name, query));
+
+      const msg = document.createElement('span');
+      msg.className = 'emsg';
+      msg.appendChild(highlightText(e.message, query));
+
+      li.appendChild(name);
+      li.appendChild(msg);
+
+      if (showControls) {
+        const acts = document.createElement('span');
+        acts.className = 'eact';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'small';
+        editBtn.textContent = 'edit';
+        editBtn.onclick = () => startEdit(li, e.id, e.name, e.message);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'small danger';
+        delBtn.textContent = 'delete';
+        delBtn.onclick = () => deleteEntry(e.id, li);
+
+        acts.appendChild(editBtn);
+        acts.appendChild(delBtn);
+        li.appendChild(acts);
+      }
+
+      ul.appendChild(li);
+    });
+  }
+
+  async function loadMyEntries() {
+    const res = await fetch('/api/entries');
+    if (!res.ok) {
+      document.getElementById('my-entries-list').innerHTML =
+        '<li class="empty">failed to load — try again</li>';
+      return;
+    }
+    const all = await res.json();
+    // GET /api/entries returns all entries; there is no server-side user filter
+    const mine = all.filter(e => e.user_id === currentUser.user_id);
+    renderEntries(mine, document.getElementById('my-entries-list'), true, 'nothing posted yet.');
+  }
+
+  async function handleAddEntry() {
+    const name = document.getElementById('add-name').value.trim();
+    const message = document.getElementById('add-message').value.trim();
+    const msg = document.getElementById('add-msg');
+    if (!name || !message) { showMsg(msg, 'err', 'fill in both fields'); return; }
+    const res = await fetch('/api/entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ name, message }),
+    });
+    if (res.status === 201) {
+      document.getElementById('add-name').value = '';
+      document.getElementById('add-message').value = '';
+      showMsg(msg, 'ok', 'added');
+      setTimeout(() => { msg.textContent = ''; msg.className = 'msg'; }, 3000);
+      loadMyEntries();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showMsg(msg, 'err', data.detail || 'failed to add entry');
+    }
+  }
+
+  function startEdit(li, id, currentName, currentMsg) {
+    li.innerHTML = '';
+    const row = document.createElement('span');
+    row.className = 'edit-row';
+
+    const nameIn = document.createElement('input');
+    nameIn.type = 'text';
+    nameIn.value = currentName;
+
+    const msgIn = document.createElement('input');
+    msgIn.type = 'text';
+    msgIn.value = currentMsg;
+
+    const errSpan = document.createElement('span');
+    errSpan.className = 'msg';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'small primary';
+    saveBtn.textContent = 'save';
+    saveBtn.onclick = () => saveEdit(id, nameIn.value.trim(), msgIn.value.trim(), errSpan);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'small';
+    cancelBtn.textContent = 'cancel';
+    cancelBtn.onclick = () => loadMyEntries();
+
+    row.appendChild(nameIn);
+    row.appendChild(msgIn);
+    row.appendChild(saveBtn);
+    row.appendChild(cancelBtn);
+    row.appendChild(errSpan);
+    li.appendChild(row);
+  }
+
+  async function saveEdit(id, name, message, errEl) {
+    if (!name || !message) return;
+    const res = await fetch(`/api/entries/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ name, message }),
+    });
+    if (res.ok) {
+      loadMyEntries();
+    } else {
+      showMsg(errEl, 'err', 'save failed');
+    }
+  }
+
+  async function deleteEntry(id, li) {
+    const res = await fetch(`/api/entries/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (res.status === 204) {
+      loadMyEntries();
+    } else {
+      const errEl = document.createElement('span');
+      errEl.className = 'msg err';
+      errEl.textContent = 'delete failed';
+      li.appendChild(errEl);
+    }
+  }
+
+  function showMsg(el, type, text) {
+    el.className = 'msg ' + type;
+    el.textContent = text;
+  }
+</script>
+</body>
+</html>

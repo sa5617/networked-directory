@@ -1,7 +1,3 @@
-/*
- * http-server.c
- */
-
 #include <stdio.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -29,9 +25,6 @@ static void die(const char *message)
     exit(1);
 }
 
-/*
- * Reaps all terminated child processes.
- */
 static void sigchld_handler(int sig)
 {
     (void)sig; /* suppress unused parameter warning */
@@ -65,33 +58,41 @@ static int createServerSocket(unsigned short port)
     return servSock;
 }
 
-static int createMdbLookupConnection(const char *mdbHost, unsigned short mdbPort)
+/* returns -1 on failure so each caller can choose its own error policy */
+static int createTcpConnection(const char *host, unsigned short port)
 {
     struct hostent *he;
-    if ((he = gethostbyname(mdbHost)) == NULL)
-        die("gethostbyname failed");
+    if ((he = gethostbyname(host)) == NULL)
+        return -1;
     char *serverIP = inet_ntoa(*(struct in_addr *)he->h_addr);
 
     int sock;
     if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
-        die("socket failed");
+        return -1;
 
     struct sockaddr_in serverAddr;
     memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family      = AF_INET;
     serverAddr.sin_addr.s_addr = inet_addr(serverIP);
-    serverAddr.sin_port        = htons(mdbPort);
+    serverAddr.sin_port        = htons(port);
 
-    if (connect(sock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
-        die("connect failed");
+    if (connect(sock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+        close(sock);
+        return -1;
+    }
 
     return sock;
 }
 
-/*
- * send() wrapper for null-terminated strings.
- * Returns -1 on failure.
- */
+static int createMdbLookupConnection(const char *mdbHost, unsigned short mdbPort)
+{
+    int sock = createTcpConnection(mdbHost, mdbPort);
+    if (sock < 0)
+        die("mdb-lookup-server connect failed");
+    return sock;
+}
+
+/* returns -1 on failure */
 static ssize_t Send(int sock, const char *buf)
 {
     size_t len = strlen(buf);
@@ -103,19 +104,22 @@ static ssize_t Send(int sock, const char *buf)
     return res;
 }
 
-/*
- * HTTP/1.0 status codes and reason phrases.
- */
 static struct {
     int status;
     char *reason;
 } HTTP_StatusCodes[] = {
     { 200, "OK" },
+    { 201, "Created" },
+    { 204, "No Content" },
     { 301, "Moved Permanently" },
     { 400, "Bad Request" },
+    { 401, "Unauthorized" },
+    { 403, "Forbidden" },
     { 404, "Not Found" },
+    { 409, "Conflict" },
     { 500, "Internal Server Error" },
     { 501, "Not Implemented" },
+    { 502, "Bad Gateway" },
     { 0, NULL }
 };
 
@@ -151,10 +155,7 @@ static void sendErrorStatus(int clntSock, int statusCode)
     Send(clntSock, buf);
 }
 
-/*
- * Writes an HTML-escaped version of `in` into `out`.
- * Escapes &, <, >, and " so user-controlled strings are safe in HTML context.
- */
+/* escapes &, <, >, and " so user-supplied strings are safe to insert into HTML */
 static void htmlEscape(char *out, size_t outSize, const char *in)
 {
     if (outSize == 0)
@@ -182,9 +183,59 @@ static void htmlEscape(char *out, size_t outSize, const char *in)
     out[i] = '\0';
 }
 
-/*
- * Redirect the browser to requestURI with a trailing slash appended.
- */
+/* matching and escaping are kept separate so the original casing is preserved inside mark tags */
+static void buildHighlighted(char *out, size_t outSize,
+                              const char *text, const char *key)
+{
+    const char *p = text;
+    char *dst = out;
+    size_t rem = outSize;
+    size_t keyLen = strlen(key);
+
+    if (keyLen == 0 || rem <= 1) {
+        htmlEscape(out, outSize, text);
+        return;
+    }
+    *dst = '\0';
+
+    while (*p && rem > 1) {
+        const char *hit = strcasestr(p, key);
+        if (!hit) {
+            htmlEscape(dst, rem, p);
+            return;
+        }
+
+        size_t preLen = (size_t)(hit - p);
+        if (preLen > 0) {
+            char tmp[64];
+            if (preLen >= sizeof(tmp)) preLen = sizeof(tmp) - 1;
+            memcpy(tmp, p, preLen);
+            tmp[preLen] = '\0';
+            htmlEscape(dst, rem, tmp);
+            size_t n = strlen(dst);
+            dst += n; rem -= n;
+        }
+
+        size_t n = (size_t)snprintf(dst, rem, "<mark>");
+        if (n >= rem) break;
+        dst += n; rem -= n;
+
+        char matchTmp[64];
+        size_t matchLen = keyLen < sizeof(matchTmp) - 1 ? keyLen : sizeof(matchTmp) - 1;
+        memcpy(matchTmp, hit, matchLen);
+        matchTmp[matchLen] = '\0';
+        htmlEscape(dst, rem, matchTmp);
+        n = strlen(dst);
+        dst += n; rem -= n;
+
+        n = (size_t)snprintf(dst, rem, "</mark>");
+        if (n >= rem) break;
+        dst += n; rem -= n;
+
+        p = hit + keyLen;
+    }
+}
+
 static void send301Status(int clntSock, const char *requestURI)
 {
     sendStatusLine(clntSock, 301);
@@ -211,12 +262,88 @@ static void send301Status(int clntSock, const char *requestURI)
     free(buf);
 }
 
+/* returns the status code forwarded from the API, or 502 on connection failure */
+static int handleApiRequest(
+        const char *method, const char *requestURI, const char *httpVersion,
+        const char *headers, FILE *clntFp, int clntSock,
+        const char *apiHost, unsigned short apiPort)
+{
+    int apiSock = createTcpConnection(apiHost, apiPort);
+    if (apiSock < 0) {
+        sendErrorStatus(clntSock, 502);
+        return 502;
+    }
+
+    char reqLine[2048];
+    snprintf(reqLine, sizeof(reqLine), "%s %s %s\r\n", method, requestURI, httpVersion);
+    if (send(apiSock, reqLine, strlen(reqLine), 0) < 0) goto api_fail;
+
+    /* each header line already ends with \r\n from fgets */
+    if (*headers) {
+        if (send(apiSock, headers, strlen(headers), 0) < 0) goto api_fail;
+    }
+
+    if (send(apiSock, "\r\n", 2, 0) < 0) goto api_fail;
+
+    {
+        long bodyLen = 0;
+        {
+            const char *cl = strstr(headers, "Content-Length:");
+            if (cl == NULL) cl = strstr(headers, "content-length:");  /* HTTP headers are case-insensitive */
+            if (cl != NULL) {
+                const char *p = cl + strlen("Content-Length:");
+                while (*p == ' ' || *p == '\t') p++;
+                bodyLen = atol(p);
+            }
+        }
+
+        if (bodyLen > 0) {
+            char bodyBuf[DISK_IO_BUF_SIZE];
+            long remaining = bodyLen;
+            while (remaining > 0) {
+                size_t want = (size_t)(remaining < (long)sizeof(bodyBuf)
+                                      ? remaining : (long)sizeof(bodyBuf));
+                size_t got = fread(bodyBuf, 1, want, clntFp);
+                if (got == 0) {
+                    if (ferror(clntFp))
+                        perror("client body read failed");
+                    break;
+                }
+                if (send(apiSock, bodyBuf, got, 0) != (ssize_t)got) goto api_fail;
+                remaining -= (long)got;
+            }
+        }
+    }
+
+    {
+        char buf[DISK_IO_BUF_SIZE];
+        int statusCode = 502;
+        int firstLine = 1;
+        ssize_t n;
+
+        while ((n = recv(apiSock, buf, sizeof(buf), 0)) > 0) {
+            if (firstLine) {
+                int major, minor, code;
+                if (sscanf(buf, "HTTP/%d.%d %d", &major, &minor, &code) == 3)
+                    statusCode = code;
+                firstLine = 0;
+            }
+            if (send(clntSock, buf, n, 0) != n)
+                break;
+        }
+
+        close(apiSock);
+        return statusCode;
+    }
+
+api_fail:
+    close(apiSock);
+    sendErrorStatus(clntSock, 502);
+    return 502;
+}
+
 #define MAX_RESULTS 512
 
-/*
- * Handle /mdb-lookup or /mdb-lookup?key=... requests.
- * Returns the HTTP status code sent to the browser.
- */
 static int handleMdbRequest(
         const char *requestURI, FILE *mdbFp, int mdbSock, int clntSock)
 {
@@ -234,7 +361,7 @@ static int handleMdbRequest(
 
     S("<!doctype html>\n<html lang=\"en\">\n<head>\n"
       "<meta charset=\"utf-8\">\n"
-      "<title>The Directory \xe2\x80\x94 Network Directory</title>\n"
+      "<title>The Lookup \xe2\x80\x94 Network Directory</title>\n"
       "<style>\n"
       "@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');\n"
       "html,body{margin:0;padding:0;min-height:100%;background:#d8d3c4;}\n"
@@ -297,15 +424,15 @@ static int handleMdbRequest(
       ".foot a{color:#1f1b14;text-decoration:none;border-bottom:1.5px solid #1f1b14;"
       "padding-bottom:1px;}\n"
       ".foot a::before{content:\"\\2196 \";}\n"
+      "mark{background:#c8a44a;color:#1f1b14;padding:0 2px;border-radius:1px;}\n"
       "</style>\n</head>\n<body>\n");
 
     S("<div class=\"page\">\n"
       "  <div class=\"slug\">\n"
       "    <span class=\"left\">net.dir / lookup</span>\n"
-      "    <span class=\"right\"><a href=\"/\">return to index</a>"
-      " &nbsp;&middot;&nbsp; page&nbsp;&mdash;&nbsp;2&nbsp;&mdash;</span>\n"
+      "    <span class=\"right\"><a href=\"/\">return to index</a></span>\n"
       "  </div>\n"
-      "  <div class=\"title\">The Directory</div>\n"
+      "  <div class=\"title\">The Lookup</div>\n"
       "  <div class=\"sub\">search by name or message</div>\n");
 
     S("  <form method=\"GET\" action=\"/mdb-lookup\">\n"
@@ -313,7 +440,7 @@ static int handleMdbRequest(
       "    <span class=\"prompt\">find&nbsp;:</span>\n");
 
     if (key) {
-        /* key comes directly from the URL — escape it before inserting into an attribute */
+        /* key comes from the URL; escape it before inserting into an attribute value */
         char keyEsc[6000 + 1];
         htmlEscape(keyEsc, sizeof(keyEsc), key);
         char inputBuf[sizeof(keyEsc) + 150];
@@ -373,12 +500,12 @@ static int handleMdbRequest(
             S("    <li class=\"empty\">nothing found.</li>\n");
         } else {
             int i;
-            char rowBuf[400];
-            char enameEsc[20 * 6 + 1];
-            char emsgEsc[30 * 6 + 1];
+            char rowBuf[1500];
+            char enameEsc[512];
+            char emsgEsc[768];
             for (i = 0; i < count; i++) {
-                htmlEscape(enameEsc, sizeof(enameEsc), rnames[i]);
-                htmlEscape(emsgEsc, sizeof(emsgEsc), rmsgs[i]);
+                buildHighlighted(enameEsc, sizeof(enameEsc), rnames[i], key);
+                buildHighlighted(emsgEsc, sizeof(emsgEsc), rmsgs[i], key);
                 snprintf(rowBuf, sizeof(rowBuf),
                     "    <li><span class=\"ename\">%s</span>"
                     "<span class=\"emsg\">%s</span></li>\n",
@@ -401,10 +528,6 @@ static int handleMdbRequest(
     return statusCode;
 }
 
-/*
- * Handle static file requests.
- * Returns the HTTP status code sent to the browser.
- */
 static int handleFileRequest(
         const char *webRoot, const char *requestURI, int clntSock)
 {
@@ -456,27 +579,18 @@ func_end:
     return statusCode;
 }
 
-/*
- * Handle one HTTP connection: open a fresh mdb connection, parse the request,
- * dispatch to the appropriate handler, log, and clean up.
- * Called in the child process after fork().
- */
+/* called in the child process after fork() */
 static void handleClient(int clntSock, struct sockaddr_in clntAddr,
                           const char *webRoot,
-                          const char *mdbHost, unsigned short mdbPort)
+                          const char *mdbHost, unsigned short mdbPort,
+                          const char *apiHost, unsigned short apiPort)
 {
-    int mdbSock = createMdbLookupConnection(mdbHost, mdbPort);
-    FILE *mdbFp = fdopen(mdbSock, "r");
-    if (mdbFp == NULL) {
-        close(mdbSock);
-        die("fdopen failed");
-    }
+    int   mdbSock = -1;
+    FILE *mdbFp   = NULL;
 
     FILE *clntFp = fdopen(clntSock, "r");
-    if (clntFp == NULL) {
-        fclose(mdbFp);
+    if (clntFp == NULL)
         die("fdopen failed");
-    }
 
     char requestLine[1000];
     char line[1000];
@@ -504,7 +618,9 @@ static void handleClient(int clntSock, struct sockaddr_in clntAddr,
         }
     }
 
-    if (strcmp(method, "GET") != 0) {
+    /* /api/ routes accept all methods; the Python API validates them */
+    if (strcmp(method, "GET") != 0 &&
+            strncmp(requestURI, "/api/", 5) != 0) {
         statusCode = 501;
         sendErrorStatus(clntSock, statusCode);
         goto done;
@@ -523,7 +639,7 @@ static void handleClient(int clntSock, struct sockaddr_in clntAddr,
         goto done;
     }
 
-    // block path traversal — "/../" or trailing "/.." would escape webRoot
+    // block path traversal: "/../" and trailing "/.." would escape webRoot
     {
         int ulen = strlen(requestURI);
         if (ulen >= 3) {
@@ -536,6 +652,9 @@ static void handleClient(int clntSock, struct sockaddr_in clntAddr,
         }
     }
 
+    /* buffer all headers unconditionally; forwarded to API, discarded otherwise */
+    char   headerBuf[8192];
+    size_t headerLen = 0;
     while (1) {
         if (fgets(line, sizeof(line), clntFp) == NULL) {
             statusCode = 400;
@@ -543,11 +662,29 @@ static void handleClient(int clntSock, struct sockaddr_in clntAddr,
         }
         if (strcmp("\r\n", line) == 0 || strcmp("\n", line) == 0)
             break;
+        size_t llen = strlen(line);
+        if (headerLen + llen < sizeof(headerBuf) - 1) {
+            memcpy(headerBuf + headerLen, line, llen);
+            headerLen += llen;
+        }
     }
+    headerBuf[headerLen] = '\0';
 
     if (strcmp(requestURI, "/mdb-lookup") == 0 ||
             strncmp(requestURI, "/mdb-lookup?", 12) == 0) {
+        mdbSock = createMdbLookupConnection(mdbHost, mdbPort);
+        mdbFp   = fdopen(mdbSock, "r");
+        if (mdbFp == NULL) {
+            close(mdbSock);
+            mdbSock = -1;
+            statusCode = 500;
+            sendErrorStatus(clntSock, statusCode);
+            goto done;
+        }
         statusCode = handleMdbRequest(requestURI, mdbFp, mdbSock, clntSock);
+    } else if (strncmp(requestURI, "/api/", 5) == 0) {
+        statusCode = handleApiRequest(method, requestURI, httpVersion,
+                                      headerBuf, clntFp, clntSock, apiHost, apiPort);
     } else {
         statusCode = handleFileRequest(webRoot, requestURI, clntSock);
     }
@@ -557,8 +694,8 @@ done:
             inet_ntoa(clntAddr.sin_addr),
             method, requestURI, httpVersion,
             statusCode, getReasonPhrase(statusCode));
-    fclose(mdbFp);  // also closes mdbSock
-    fclose(clntFp); // also closes clntSock
+    if (mdbFp) fclose(mdbFp);  // also closes mdbSock; NULL for /api/* and static routes
+    fclose(clntFp);            // also closes clntSock
 }
 
 int main(int argc, char *argv[])
@@ -575,9 +712,10 @@ int main(int argc, char *argv[])
     if (sigaction(SIGCHLD, &sa, NULL) < 0)
         die("sigaction() failed");
 
-    if (argc != 5) {
+    if (argc != 7) {
         fprintf(stderr,
-                "usage: %s <server_port> <web_root> <mdb-lookup-host> <mdb-lookup-port>\n",
+                "usage: %s <server_port> <web_root> <mdb-lookup-host> <mdb-lookup-port>"
+                " <api-host> <api-port>\n",
                 argv[0]);
         exit(1);
     }
@@ -586,6 +724,8 @@ int main(int argc, char *argv[])
     const char *webRoot     = argv[2];
     const char *mdbHost     = argv[3];
     unsigned short mdbPort  = atoi(argv[4]);
+    const char *apiHost     = argv[5];
+    unsigned short apiPort  = atoi(argv[6]);
 
     int servSock = createServerSocket(servPort);
 
@@ -618,7 +758,7 @@ int main(int argc, char *argv[])
         }
         if (pid == 0) {
             close(servSock);
-            handleClient(clntSock, clntAddr, webRoot, mdbHost, mdbPort);
+            handleClient(clntSock, clntAddr, webRoot, mdbHost, mdbPort, apiHost, apiPort);
             exit(0);
         }
         // parent closes its copy so the fd is fully released when the child closes theirs

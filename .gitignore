@@ -10,8 +10,13 @@ mdb-lookup
 *.dSYM/**
 *.d
 
+# Python artifacts
+__pycache__/
+*.pyc
+
 # Data files
 data/mydb
+api/directory.db
 
 # Editor files
 .vscode/
